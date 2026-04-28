@@ -16,15 +16,23 @@ void NextionBridge::begin() {
 
 void NextionBridge::poll() {
   while (Serial.available() > 0) {
-    feed(host_parser_, (uint8_t)Serial.read(), &NextionBridge::onHostFrame);
+    handleHostByte((uint8_t)Serial.read());
   }
   while (Serial2.available() > 0) {
-    feed(hmi_parser_,  (uint8_t)Serial2.read(), &NextionBridge::onHmiFrame);
+    handleHmiByte((uint8_t)Serial2.read());
   }
 }
 
-void NextionBridge::feed(FrameParser& p, uint8_t b,
-                         void (NextionBridge::*onFrame)(const uint8_t*, size_t)) {
+void NextionBridge::handleHostByte(uint8_t b) {
+  feedParser(host_parser_, b, &NextionBridge::processHostFrame);
+}
+
+void NextionBridge::handleHmiByte(uint8_t b) {
+  feedParser(hmi_parser_, b, &NextionBridge::processHmiFrame);
+}
+
+void NextionBridge::feedParser(FrameParser& p, uint8_t b,
+                               void (NextionBridge::*onFrame)(const uint8_t*, size_t)) {
   if (b == 0xFF) {
     p.ffCount++;
     if (p.ffCount == 3) {
@@ -41,7 +49,7 @@ void NextionBridge::feed(FrameParser& p, uint8_t b,
   if (p.len < sizeof(p.buf)) p.buf[p.len++] = b;
 }
 
-bool NextionBridge::equalsIgnoreCase(const uint8_t* d, size_t len, const char* expected) {
+bool NextionBridge::isControlCommand(const uint8_t* d, size_t len, const char* expected) {
   const size_t n = strlen(expected);
   if (len != n) return false;
   for (size_t i = 0; i < n; ++i) {
@@ -97,9 +105,9 @@ bool NextionBridge::tryParseAmplitudes(const uint8_t* d, size_t len) {
   return true;
 }
 
-void NextionBridge::onHostFrame(const uint8_t* d, size_t len) {
-  if (equalsIgnoreCase(d, len, "ESTOP")) { tens_.enterEstop("host"); return; }
-  if (equalsIgnoreCase(d, len, "RESET")) { tens_.clearEstop("host"); return; }
+void NextionBridge::processHostFrame(const uint8_t* d, size_t len) {
+  if (isControlCommand(d, len, "ESTOP")) { tens_.enterEstop("host"); return; }
+  if (isControlCommand(d, len, "RESET")) { tens_.clearEstop("host"); return; }
 
   if (tens_.estopLatched()) {
     if (isAllowedUiCommandWhileLatched(d, len)) {
@@ -116,9 +124,9 @@ void NextionBridge::onHostFrame(const uint8_t* d, size_t len) {
   Serial2.write(0xFF); Serial2.write(0xFF); Serial2.write(0xFF);
 }
 
-void NextionBridge::onHmiFrame(const uint8_t* d, size_t len) {
-  if (equalsIgnoreCase(d, len, "ESTOP")) { tens_.enterEstop("hmi"); return; }
-  if (equalsIgnoreCase(d, len, "RESET")) { tens_.clearEstop("hmi"); return; }
+void NextionBridge::processHmiFrame(const uint8_t* d, size_t len) {
+  if (isControlCommand(d, len, "ESTOP")) { tens_.enterEstop("hmi"); return; }
+  if (isControlCommand(d, len, "RESET")) { tens_.clearEstop("hmi"); return; }
 
   // Forward everything else up to the host.
   Serial.write(d, len);

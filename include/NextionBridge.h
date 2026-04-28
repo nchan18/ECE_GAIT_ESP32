@@ -25,14 +25,17 @@ private:
     int     ffCount = 0;
   };
 
-  void feed(FrameParser& p, uint8_t b, void (NextionBridge::*onFrame)(const uint8_t*, size_t));
-  void onHostFrame(const uint8_t* data, size_t len);
-  void onHmiFrame (const uint8_t* data, size_t len);
+  void handleHostByte(uint8_t b);
+  void handleHmiByte (uint8_t b);
+  void feedParser    (FrameParser& p, uint8_t b,
+                      void (NextionBridge::*onFrame)(const uint8_t*, size_t));
+  void processHostFrame(const uint8_t* data, size_t len);
+  void processHmiFrame (const uint8_t* data, size_t len);
 
-  static bool equalsIgnoreCase   (const uint8_t* d, size_t n, const char* expected);
-  static bool startsWithIgnoreCase(const uint8_t* d, size_t n, const char* prefix);
+  static bool isControlCommand            (const uint8_t* d, size_t n, const char* expected);
+  static bool startsWithIgnoreCase        (const uint8_t* d, size_t n, const char* prefix);
   static bool isAllowedUiCommandWhileLatched(const uint8_t* d, size_t n);
-  bool tryParseAmplitudes(const uint8_t* d, size_t n);
+  bool        tryParseAmplitudes          (const uint8_t* d, size_t n);
 
   TensDriver&     tens_;
   TensAmplitudes& manual_amps_;
