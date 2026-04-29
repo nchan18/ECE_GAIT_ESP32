@@ -18,7 +18,7 @@ constexpr int LED_ESTOP    = 13;
 // ---------------------------------------------------------------------------
 // Nextion HMI bridge (Serial2).
 // ---------------------------------------------------------------------------
-constexpr uint32_t HMI_BAUD       = 9600;
+constexpr uint32_t HMI_BAUD       = 115200;
 constexpr int      NEXTION_RX_PIN = 16;
 constexpr int      NEXTION_TX_PIN = 17;
 

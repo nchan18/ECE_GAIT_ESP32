@@ -139,9 +139,6 @@ void setup() {
   g_controller.begin();
 
   g_last_page_index = g_controller.currentPageIndex();
-
-  Serial.println("=== gait firmware boot ===");
-  Serial.print  ("firmware: "); Serial.println(hmi::FIRMWARE_VERSION);
 }
 
 void loop() {

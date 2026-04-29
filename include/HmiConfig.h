@@ -85,9 +85,8 @@ constexpr uint32_t PAGE_SETTLE_MS = 80;
 //
 // `nextion_id` is the numeric page ID in the Nextion editor (used by touch
 // events). `index` (implicit) is the position in this array, used everywhere
-// in the firmware as the "logical page index". They are not the same: the
-// HMI was authored with pages added in a different order than they are
-// displayed (page3 sits between page1 and the removed page2).
+// in the firmware as the "logical page index". They should match and are
+// kept in order: page0 (id=0), page1 (id=1), page2 (id=2), page3 (id=3).
 //
 // `en_component_id` is per-page because the EN button was added separately
 // to each page and didn't get a consistent ID.
@@ -106,8 +105,8 @@ constexpr PageInfo PAGES[] = {
   // name      nextion_id  en_id  blank_pic
   {  "page0",   0,           16,   STATUS_PIC_BLANK  },  // TENS Output Indicator
   {  "page1",   1,           33,   STATUS_PIC_BLANK  },  // ESP32 Telemetry
-  {  "page2",   2,            8,   5                 },  // Acknowledgments (different bg)
-  {  "page3",   3,           25,   STATUS_PIC_BLANK  },  // AI Model Metrics
+  {  "page2",   2,           25,   STATUS_PIC_BLANK  },  // Acknowledgments (different bg)
+  {  "page3",   3,            8,   5                 },  // AI Model Metrics
 };
 constexpr int NUM_PAGES = sizeof(PAGES) / sizeof(PAGES[0]);
 
@@ -211,7 +210,7 @@ constexpr TelemetryBinding TELEMETRY_BINDINGS[] = {
   {  "watchStatus",   "watchStatus",   BindingMode::Txt, PAGE_IDX_ESP_TELEM  },
   {  "errMsg",        "errMsg",        BindingMode::Txt, PAGE_IDX_ESP_TELEM  },
 
-  // ── Page 3 (logical idx 2): AI Model Metrics ─────────────────────────────
+  // ── Page 3 (logical idx 3): AI Model Metrics ─────────────────────────────
   {  "overallRmse",   "overallRmse",   BindingMode::Txt, PAGE_IDX_AI_METRICS },
   {  "rmseGastroc",   "rmseGastroc",   BindingMode::Txt, PAGE_IDX_AI_METRICS },
   {  "rmseQuad",      "rmseQuad",      BindingMode::Txt, PAGE_IDX_AI_METRICS },
@@ -224,6 +223,7 @@ constexpr int NUM_TELEMETRY_BINDINGS =
 // Linear-scan lookup. Table is small (~14 entries) and lookups happen at most
 // at telemetry rate (~1 Hz), so a hash map would be overkill. Returns
 // nullptr if no binding exists for `key`.
+//
 inline const TelemetryBinding* findBinding(const char* key) {
   for (int i = 0; i < NUM_TELEMETRY_BINDINGS; ++i) {
     const char* a = TELEMETRY_BINDINGS[i].key;

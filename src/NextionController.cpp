@@ -88,8 +88,7 @@ void NextionController::onHmiFrame(const uint8_t* data, size_t len) {
 void NextionController::handleTouchEvent(uint8_t page_id, uint8_t component_id,
                                          uint8_t event) {
   // Update logical page index from the touch packet's page byte. The byte
-  // is the Nextion's numeric page ID, which we have to map to the position
-  // in our PAGES[] table (they are not the same — page3 sits at index 2).
+  // is the Nextion's numeric page ID, which we look up in our PAGES[] table.
   for (int i = 0; i < hmi::NUM_PAGES; ++i) {
     if (hmi::PAGES[i].nextion_id == page_id) {
       current_page_index_ = i;

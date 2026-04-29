@@ -22,8 +22,12 @@ void Esp32Telemetry::begin() {
   } else if (cause == ESP_RST_PANIC) {
     setErrorMessage("Recovered from panic");
   }
-  // Other reasons (POWERON, EXT, SW) leave errMsg blank.
+  // Other reasons (POWERON, EXT, SW) leave errMsg in default "None" state,
+  // which setErrorMessage("") below establishes via the dedup-friendly path.
 
+  // Always call once with "" so the initial "None" gets pushed if/when the
+  // user lands on page1. If a recovery message was already set above this
+  // call is a no-op due to setErrorMessage()'s dedup check.
   if (error_msg_[0] == '\0') {
     setErrorMessage("");
   }
@@ -43,15 +47,10 @@ void Esp32Telemetry::petWatchdog() {
   const uint32_t loop_dt = now - loop_start_ms_;
   loop_start_ms_ = now;
 
+  // Track the worst loop time observed since the last updateWatchStatus()
+  // call. updateWatchStatus() reads and resets this value once per second
+  // and decides WARN/OK from the snapshot.
   if (loop_dt > worst_loop_ms_) worst_loop_ms_ = loop_dt;
-
-  // WARN if the loop took more than half the WDT timeout to come back
-  // around. Indicates we're approaching trouble.
-  const uint32_t warn_threshold_ms =
-      (uint32_t)(hmi::TWD_TIMEOUT_S * 1000.0f * hmi::WATCH_WARN_FRACTION);
-  if (loop_dt > warn_threshold_ms) {
-    watchdog_warned_ = true;
-  }
 
   esp_task_wdt_reset();
 }
@@ -94,6 +93,13 @@ void Esp32Telemetry::pushBootOnce() {
            ESP_ARDUINO_VERSION_MINOR,
            ESP_ARDUINO_VERSION_PATCH);
   controller_.publishTelemetryTextForce("coreVersion", core_version);
+
+  // errMsg is set via setErrorMessage() which dedups — so on a fresh page
+  // entry we must explicitly re-push the current message, otherwise the
+  // user would see whatever stale value was already on the Nextion field.
+  if (error_msg_[0] != '\0') {
+    controller_.publishTelemetryTextForce("errMsg", error_msg_);
+  }
 }
 
 void Esp32Telemetry::pushAllLive() {
@@ -137,44 +143,50 @@ void Esp32Telemetry::pushDynamicTick() {
     last_packet_loss_pct_ = pct;
   }
 
-  // Auto-raise an error if parse loss is alarmingly high.
+  // Auto-raise an error if parse loss is alarmingly high. When loss drops
+  // back down, clear the error (other concurrent errors stay because we
+  // only clear if the current message is the one we set).
   if (pct >= hmi::PARSE_LOSS_ERROR_PCT) {
     setErrorMessage("HMI: high parse loss");
-  } else if (error_msg_[0] != '\0' && strcmp(error_msg_, "HMI: high parse loss") == 0) {
-    setErrorMessage("");
+  } else if (strcmp(error_msg_, "HMI: high parse loss") == 0) {
+    setErrorMessage(nullptr);  // back to "None"
   }
 
   // ── lastCommand & errMsg ──────────────────────────────────────────────
-  // Pushed every tick (cheap; usually unchanged so Nextion just redraws
-  // identical text). Could be event-driven only, but the periodic refresh
-  // means a missed write self-heals within a second.
+  // lastCommand is pushed every tick (cheap; usually unchanged so Nextion
+  // just redraws identical text). errMsg is push-on-change only — handled
+  // inside setErrorMessage() so it never re-pushes the same string.
   if (last_command_[0] != '\0') {
     controller_.publishTelemetryText("lastCommand", last_command_);
-  }
-  if (error_msg_[0] != '\0') {
-    controller_.publishTelemetryText("errMsg", error_msg_);
   }
 }
 
 void Esp32Telemetry::updateWatchStatus() {
+  // Snapshot the worst loop time observed since the last update, then reset
+  // for the next window. This makes the comparison meaningful — the old
+  // code reset worst_loop_ms_ at the *end* of every call, so the warned
+  // flag would clear on the very next call regardless of recent loop
+  // behavior.
+  const uint32_t peak = worst_loop_ms_;
+  worst_loop_ms_ = 0;
+
   const uint32_t now = millis();
+  const uint32_t warn_threshold_ms =
+      (uint32_t)(hmi::TWD_TIMEOUT_S * 1000.0f * hmi::WATCH_WARN_FRACTION);
+
   const char* status = "OK";
 
   if (recovered_until_ms_ != 0 && (int32_t)(now - recovered_until_ms_) < 0) {
     status = "RECOVERED";
-  } else if (watchdog_warned_) {
+  } else if (peak > warn_threshold_ms) {
+    // Spike this window — raise/refresh WARN.
     status = "WARN";
-    // Self-clear the warning after a clean tick window — if we petted the
-    // dog without warning for the full live period, drop back to OK.
-    if (worst_loop_ms_ < (uint32_t)(hmi::TWD_TIMEOUT_S * 1000.0f *
-                                     hmi::WATCH_WARN_FRACTION)) {
-      watchdog_warned_ = false;
-    }
-    worst_loop_ms_ = 0;
-  } else {
-    // Reset worst_loop_ms_ each window so a momentary spike doesn't pin
-    // the warning indefinitely.
-    worst_loop_ms_ = 0;
+    watchdog_warned_ = true;
+  } else if (watchdog_warned_) {
+    // Previous window was warned, this window was clean — keep showing
+    // WARN for one cycle so the user sees it, then drop to OK next time.
+    status = "WARN";
+    watchdog_warned_ = false;
   }
 
   if (status != last_watch_status_) {
@@ -184,11 +196,14 @@ void Esp32Telemetry::updateWatchStatus() {
 }
 
 int Esp32Telemetry::computePacketLossPct(uint32_t now_ms) const {
+  // The for-loop is bounded by parse_history_count_, which only grows on
+  // successful recordHmiFrame() calls. Every iterated slot is therefore
+  // populated — no need to skip "uninitialized" entries (and no risk of
+  // mis-skipping a real frame received at millis() == 0).
   int total = 0;
   int failed = 0;
   for (int i = 0; i < parse_history_count_; ++i) {
     const ParseSample& sample = parse_history_[i];
-    if (sample.at_ms == 0) continue;
     if ((uint32_t)(now_ms - sample.at_ms) > hmi::PARSE_LOSS_WINDOW_MS) continue;
     ++total;
     if (!sample.parsed_ok) ++failed;
@@ -219,15 +234,15 @@ void Esp32Telemetry::recordCommand(const char* description) {
 }
 
 void Esp32Telemetry::setErrorMessage(const char* msg) {
-  if (msg == nullptr || msg[0] == '\0') {
-    strncpy(error_msg_, "None", sizeof(error_msg_) - 1);
-    error_msg_[sizeof(error_msg_) - 1] = '\0';
-    if (controller_.currentPageIndex() == hmi::PAGE_IDX_ESP_TELEM) {
-      controller_.publishTelemetryText("errMsg", error_msg_);
-    }
-    return;
-  }
-  strncpy(error_msg_, msg, sizeof(error_msg_) - 1);
+  // Pass nullptr or "" to clear the error to the "no error" state ("None").
+  // Any non-empty msg is treated as an actual error condition.
+  const char* effective = (msg == nullptr || msg[0] == '\0') ? "None" : msg;
+
+  // Dedup: if the message hasn't changed, do not re-push to the display.
+  // This makes setErrorMessage() cheap to call from periodic code paths.
+  if (strcmp(error_msg_, effective) == 0) return;
+
+  strncpy(error_msg_, effective, sizeof(error_msg_) - 1);
   error_msg_[sizeof(error_msg_) - 1] = '\0';
   if (controller_.currentPageIndex() == hmi::PAGE_IDX_ESP_TELEM) {
     controller_.publishTelemetryText("errMsg", error_msg_);
