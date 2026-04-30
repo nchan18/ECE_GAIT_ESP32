@@ -17,6 +17,9 @@ constexpr int ESTOP    = 14;
 
 // ---------------------------------------------------------------------------
 // Nextion HMI bridge (Serial2).
+//
+// The HMI panel's baud is fixed by the `bauds=` line in its program.s.
+// Must match exactly or the link will look "dead" / unresponsive.
 // ---------------------------------------------------------------------------
 constexpr uint32_t HMI_BAUD       = 9600;
 constexpr int      NEXTION_RX_PIN = 16;

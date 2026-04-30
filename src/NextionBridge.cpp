@@ -1,17 +1,24 @@
 #include "NextionBridge.h"
 #include "Config.h"
+#include "TensDriver.h"
 #include <ctype.h>
 #include <string.h>
 
-NextionBridge::NextionBridge(TensDriver& tens, TensAmplitudes& manual_amps,
-                             uint32_t& manual_amps_stamp_ms)
-    : tens_(tens),
+NextionBridge::NextionBridge(NextionController& controller,
+                             NextionDisplay&    display,
+                             TensDriver&        tens,
+                             TensAmplitudes&    manual_amps,
+                             uint32_t&          manual_amps_stamp_ms)
+    : controller_(controller),
+      display_(display),
+      tens_(tens),
       manual_amps_(manual_amps),
       manual_stamp_ms_(manual_amps_stamp_ms) {}
 
-void NextionBridge::begin() {
-  Serial.begin(cfg::HOST_BAUD);
-  Serial2.begin(cfg::HMI_BAUD, SERIAL_8N1, cfg::NEXTION_RX_PIN, cfg::NEXTION_TX_PIN);
+void NextionBridge::begin(uint32_t host_baud) {
+  Serial.begin(host_baud);
+  // Note: Serial2 is initialized by NextionDisplay::begin() — single owner.
+  // We just consume bytes from it here.
 }
 
 void NextionBridge::poll() {
@@ -67,15 +74,10 @@ bool NextionBridge::startsWithIgnoreCase(const uint8_t* d, size_t len, const cha
   return true;
 }
 
-bool NextionBridge::isAllowedUiCommandWhileLatched(const uint8_t* d, size_t n) {
-  return startsWithIgnoreCase(d, n, "STATUSLED.PIC=")
-      || startsWithIgnoreCase(d, n, "STATUSTXT.TXT=")
-      || startsWithIgnoreCase(d, n, "STATUSTXT.PCO=")
-      || startsWithIgnoreCase(d, n, "STATUSTXT.BORDERC=")
-      || startsWithIgnoreCase(d, n, "VIS STATUSTXT,");
-}
-
 bool NextionBridge::tryParseAmplitudes(const uint8_t* d, size_t len) {
+  // Same parser as the original — accepts "Q,H,A,C" CSV from host UART
+  // and stores into the shared manual_amps_ buffer with a timestamp. The
+  // override window logic lives in main.cpp.
   int commas = 0;
   for (size_t i = 0; i < len; ++i) {
     const char c = (char)d[i];
@@ -106,29 +108,51 @@ bool NextionBridge::tryParseAmplitudes(const uint8_t* d, size_t len) {
 }
 
 void NextionBridge::processHostFrame(const uint8_t* d, size_t len) {
-  if (isControlCommand(d, len, "ESTOP")) { tens_.enterEstop("host"); return; }
-  if (isControlCommand(d, len, "RESET")) { tens_.clearEstop("host"); return; }
-
-  if (tens_.estopLatched()) {
-    if (isAllowedUiCommandWhileLatched(d, len)) {
-      Serial2.write(d, len);
-      Serial2.write(0xFF); Serial2.write(0xFF); Serial2.write(0xFF);
-    }
+  // Host UART is dev-only — it can still send ESTOP/RESET to drive the
+  // controller, and TENS amplitude CSVs for manual override.
+  if (isControlCommand(d, len, "ESTOP")) {
+    controller_.onExternalEstop();
+    return;
+  }
+  if (isControlCommand(d, len, "RESET")) {
+    controller_.onExternalReset();
     return;
   }
 
   if (tryParseAmplitudes(d, len)) return;
 
-  // Otherwise pass through to the Nextion HMI.
-  Serial2.write(d, len);
-  Serial2.write(0xFF); Serial2.write(0xFF); Serial2.write(0xFF);
+  // No more passthrough to Serial2. The single-owner pattern means dev
+  // Python cannot directly script the Nextion via the host UART — that is
+  // intentional. If you need this for development, add a debug method on
+  // NextionDisplay rather than re-opening direct Serial2 writes.
 }
 
 void NextionBridge::processHmiFrame(const uint8_t* d, size_t len) {
-  if (isControlCommand(d, len, "ESTOP")) { tens_.enterEstop("hmi"); return; }
-  if (isControlCommand(d, len, "RESET")) { tens_.clearEstop("hmi"); return; }
+  // Decide whether this frame parsed as something we recognize. Parse loss
+  // observer (page1's packetLoss field) is informed both ways.
+  bool parsed_ok = false;
 
-  // Forward everything else up to the host.
-  Serial.write(d, len);
-  Serial.write(0xFF); Serial.write(0xFF); Serial.write(0xFF);
+  // Recognized payload types:
+  //   1. 0x65 touch event packet (4 bytes minimum)
+  //   1b. 0x66 current-page report packet (page changes)
+  //   2. ESTOP/RESET text commands
+  //   3. Single-byte status responses (0x00, 0x01, 0x1A) — silently
+  //      acknowledged as parsed-OK
+  if (len >= 4 && d[0] == 0x65) {
+    parsed_ok = true;
+    controller_.onHmiFrame(d, len);
+  } else if (len == 2 && d[0] == 0x66) {
+    parsed_ok = true;
+  } else if (isControlCommand(d, len, "ESTOP")) {
+    parsed_ok = true;
+    controller_.onExternalEstop();
+  } else if (isControlCommand(d, len, "RESET")) {
+    parsed_ok = true;
+    controller_.onExternalReset();
+  } else if (len == 1 && (d[0] == 0x00 || d[0] == 0x01 || d[0] == 0x1A)) {
+    parsed_ok = true;
+    // Status code; nothing further to do.
+  }
+
+  if (hmi_parse_cb_) hmi_parse_cb_(parsed_ok, hmi_parse_user_);
 }

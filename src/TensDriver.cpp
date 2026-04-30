@@ -7,8 +7,9 @@ void TensDriver::begin() {
   pinMode(cfg::CS_ANTTIB,    OUTPUT);
   pinMode(cfg::CS_HAMSTRING, OUTPUT);
   pinMode(cfg::CS_QUAD,      OUTPUT);
-  pinMode(cfg::ESTOP,    OUTPUT);
+  pinMode(cfg::ESTOP,        OUTPUT);
   zeroAllOutputs();
+  digitalWrite(cfg::ESTOP, LOW);
 }
 
 void TensDriver::zeroAllOutputs() {
@@ -19,7 +20,8 @@ void TensDriver::zeroAllOutputs() {
 }
 
 void TensDriver::apply(const TensAmplitudes& a) {
-  if (estop_latched_) {
+  // Defensive: if no state has been bound (programmer error), force-zero.
+  if (state_ptr_ == nullptr || *state_ptr_ != hmi::SystemState::Active) {
     zeroAllOutputs();
     return;
   }
@@ -29,17 +31,6 @@ void TensDriver::apply(const TensAmplitudes& a) {
   analogWrite(cfg::CS_QUAD,      constrain(a.quadAmp,      0, 255));
 }
 
-void TensDriver::enterEstop(const char* source) {
-  estop_latched_ = true;
-  zeroAllOutputs();
-  digitalWrite(cfg::ESTOP, HIGH);
-  Serial.print("SYS,estop=1,src=");
-  Serial.println(source);
-}
-
-void TensDriver::clearEstop(const char* source) {
-  estop_latched_ = false;
-  digitalWrite(cfg::ESTOP, LOW);
-  Serial.print("SYS,estop=0,src=");
-  Serial.println(source);
+void TensDriver::setEstopIndicator(bool on) {
+  digitalWrite(cfg::ESTOP, on ? HIGH : LOW);
 }
