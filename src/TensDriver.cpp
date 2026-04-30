@@ -7,7 +7,7 @@ void TensDriver::begin() {
   pinMode(cfg::CS_ANTTIB,    OUTPUT);
   pinMode(cfg::CS_HAMSTRING, OUTPUT);
   pinMode(cfg::CS_QUAD,      OUTPUT);
-  pinMode(cfg::LED_ESTOP,    OUTPUT);
+  pinMode(cfg::ESTOP,    OUTPUT);
   zeroAllOutputs();
 }
 
@@ -32,14 +32,14 @@ void TensDriver::apply(const TensAmplitudes& a) {
 void TensDriver::enterEstop(const char* source) {
   estop_latched_ = true;
   zeroAllOutputs();
-  digitalWrite(cfg::LED_ESTOP, HIGH);
+  digitalWrite(cfg::ESTOP, HIGH);
   Serial.print("SYS,estop=1,src=");
   Serial.println(source);
 }
 
 void TensDriver::clearEstop(const char* source) {
   estop_latched_ = false;
-  digitalWrite(cfg::LED_ESTOP, LOW);
+  digitalWrite(cfg::ESTOP, LOW);
   Serial.print("SYS,estop=0,src=");
   Serial.println(source);
 }

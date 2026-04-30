@@ -10,7 +10,7 @@ NextionBridge::NextionBridge(TensDriver& tens, TensAmplitudes& manual_amps,
       manual_stamp_ms_(manual_amps_stamp_ms) {}
 
 void NextionBridge::begin() {
-  Serial.begin(cfg::HMI_BAUD);
+  Serial.begin(cfg::HOST_BAUD);
   Serial2.begin(cfg::HMI_BAUD, SERIAL_8N1, cfg::NEXTION_RX_PIN, cfg::NEXTION_TX_PIN);
 }
 

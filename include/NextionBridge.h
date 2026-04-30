@@ -1,7 +1,7 @@
 // NextionBridge.h — Nextion-style frame parser + host/HMI command dispatch.
 //
 // Frames are payload bytes terminated by 0xFF 0xFF 0xFF.
-// USB Serial  <-> host PC
+// USB Serial  <-> host PC (always UART, regardless of inference mode)
 // Serial2     <-> Nextion HMI
 #pragma once
 
