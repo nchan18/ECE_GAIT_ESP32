@@ -15,6 +15,10 @@ constexpr int CS_HAMSTRING = 26;
 constexpr int CS_QUAD      = 25;
 constexpr int ESTOP    = 14;
 
+constexpr int ENABLE_D18 = 18;
+constexpr int ENABLE_D19 = 19;
+constexpr int ENABLE_D23 = 23;
+
 // ---------------------------------------------------------------------------
 // Nextion HMI bridge (Serial2).
 //
@@ -43,6 +47,7 @@ constexpr uint8_t MPU_ADDR        = 0x68;
 constexpr uint8_t MPU_PWR_MGMT_1  = 0x6B;
 constexpr uint8_t MPU_GYRO_XOUT_H = 0x43;
 constexpr float   GYRO_LSB_PER_DPS = 131.0f;
+constexpr uint32_t I2C_TIMEOUT_MS = 10;
 
 // ---------------------------------------------------------------------------
 // Sampling rates (Hz).

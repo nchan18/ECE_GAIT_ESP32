@@ -28,6 +28,20 @@ static NextionBridge g_bridge(
 
 static int g_last_page_index = -1;
 
+static void writeEnablePins(bool enabled) {
+  const uint8_t level = enabled ? HIGH : LOW;
+  digitalWrite(cfg::ENABLE_D18, level);
+  digitalWrite(cfg::ENABLE_D19, level);
+  digitalWrite(cfg::ENABLE_D23, level);
+}
+
+static void beginEnablePins() {
+  pinMode(cfg::ENABLE_D18, OUTPUT);
+  pinMode(cfg::ENABLE_D19, OUTPUT);
+  pinMode(cfg::ENABLE_D23, OUTPUT);
+  writeEnablePins(false);
+}
+
 static void onTouchEvent(uint8_t /*page_id*/, uint8_t component_id,
                          uint8_t event, void* /*user*/) {
   if (event != hmi::TOUCH_EVENT_PRESS) return;
@@ -48,6 +62,7 @@ static void onTouchEvent(uint8_t /*page_id*/, uint8_t component_id,
 static void onStateChange(hmi::SystemState old_state,
                           hmi::SystemState new_state, void* /*user*/) {
   g_tens.setEstopIndicator(new_state == hmi::SystemState::Error);
+  writeEnablePins(new_state == hmi::SystemState::Active);
 
   if (new_state != hmi::SystemState::Active) {
     g_tens.zeroAllOutputs();
@@ -81,6 +96,7 @@ void setup() {
 
   g_tens.bindState(g_controller.statePointer());
   g_tens.begin();
+  beginEnablePins();
 
   g_pipeline.begin();
   g_metrics.begin(g_pipeline.emg());

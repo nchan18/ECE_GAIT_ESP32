@@ -6,6 +6,7 @@
 void Mpu6050Bus::begin() {
   Wire.begin();
   Wire.setClock(400000);
+  Wire.setTimeOut(cfg::I2C_TIMEOUT_MS);
 }
 
 void Mpu6050Bus::selectChannel(uint8_t ch) {
