@@ -21,7 +21,7 @@ constexpr int ESTOP    = 14;
 // The HMI panel's baud is fixed by the `bauds=` line in its program.s.
 // Must match exactly or the link will look "dead" / unresponsive.
 // ---------------------------------------------------------------------------
-constexpr uint32_t HMI_BAUD       = 9600;
+constexpr uint32_t HMI_BAUD       = 115200;
 constexpr int      NEXTION_RX_PIN = 16;
 constexpr int      NEXTION_TX_PIN = 17;
 
@@ -64,7 +64,7 @@ constexpr uint32_t MANUAL_OVERRIDE_MS = 500;
 // ---------------------------------------------------------------------------
 enum class InferenceMode : uint8_t { Uart, Bluetooth };
 constexpr InferenceMode INFERENCE_MODE   = InferenceMode::Uart;
-constexpr uint32_t      HOST_BAUD        = 9600;
+constexpr uint32_t      HOST_BAUD        = 115200;
 constexpr const char*   BT_DEVICE_NAME   = "ECE_GAIT";
 constexpr uint32_t      TELEMETRY_PERIOD_MS = 100;
 

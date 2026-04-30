@@ -9,7 +9,8 @@ void SensorPipeline::begin() {
 
   mpu_.begin();
   for (int i = 0; i < cfg::NUM_IMU; ++i) {
-    if (!mpu_.wakeChannel(i)) {
+    imu_present_[i] = mpu_.wakeChannel(i);
+    if (!imu_present_[i]) {
       Serial.print("MPU6050 init failed on mux ch ");
       Serial.println(i);
     }
@@ -45,6 +46,7 @@ void SensorPipeline::sampleImuTick(uint32_t now_us) {
   last_imu_us_ = now_us;
 
   for (int i = 0; i < cfg::NUM_IMU; ++i) {
+    if (!imu_present_[i]) continue;   // skip absent sensors to avoid I2C error spam
     float gx, gy, gz;
     if (mpu_.readGyroDps(i, gx, gy, gz)) {
       imu_[i].step(gx, gy, gz, dt);

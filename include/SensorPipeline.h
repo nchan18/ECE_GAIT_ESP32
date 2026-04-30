@@ -28,6 +28,7 @@ private:
   EmgArray   emg_;
   ImuChannel imu_[cfg::NUM_IMU];
   Mpu6050Bus mpu_;
+  bool       imu_present_[cfg::NUM_IMU] = {false};
 
   uint32_t emg_period_us_ = 0;
   uint32_t imu_period_us_ = 0;
